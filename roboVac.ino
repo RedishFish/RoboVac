@@ -164,7 +164,7 @@ void autoMode(){
 
     /** Obstacle avoidance algorithm **/
     // CHANGE HERE?
-    if((leftMotorCurrent+prevLeftMotorCurrent)/2 > 3000 || (rightMotorCurrent+prevRightMotorCurrent)/2 > 3000 && prevCommand == "forward"){ // If the current readings exceed 340, it means the motors are considerably stalled
+    if((leftMotorCurrent+prevLeftMotorCurrent)/2 > 300 || (rightMotorCurrent+prevRightMotorCurrent)/2 > 300 && prevCommand == "forward"){ // If the current readings exceed 340, it means the motors are considerably stalled
       command = "backward";
       lastStuckMillis = millis();
     }
