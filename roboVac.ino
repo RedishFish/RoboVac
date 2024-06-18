@@ -78,6 +78,7 @@ void loop(){
   /** Get Serial input from the Bluetooth module **/
   if(Serial.available() > 0){
     c = (char)(Serial.read());
+
     if(c == '/'){ // Slash means message is finished
       if(messageIn.substring(0, 4) == "mode"){ // When the mode is switched between manual/auto
         mode = messageIn.substring(6, messageIn.length());
@@ -85,28 +86,28 @@ void loop(){
         resetMotors();
         prevCommand = "";
 
-        if(mode == "auto"){ // If mode is auto, reset all multipliers 
+        if(mode == "auto"){ // If mode is auto, reset all multipliers at the start
           motorMultiplier = 1;
           fanMultiplier = 1;
           analogWrite(FAN_PWM_PIN, 255*fanMultiplier);
         }
       }
-      else{ // All other messages that end with slashes will be commands issued from the manual mode
+      else{ // All other messages that end with slashes will be commands issued from manual mode
         manualMode();
       }
 
       messageIn = "";
     }
-    else{ // Add character to unfinished message
+    else{ // If the message has not completed with '/' yet, add character to unfinished message
       messageIn += c;
     }
   }
 
-  /** On mode **/
+  /** The mode determines the behaviour here **/
   if(mode == "auto"){
     autoMode();
   }
-  else{
+  else{ // The only thing that is "perpetual" in manual mode is battery reading to device every 500ms.
     // Every 500 ms, send battery stats through Bluetooth
     if(millis() - lastBatteryMillis > 500){
       voltage = analogRead(A2)/1023.0*5.0;
@@ -125,21 +126,18 @@ void loop(){
   }
 }
 
-// Code for manual mode inputs from the control app
+// Code for handling manual mode inputs from the control app
 void manualMode(){
-  if(messageIn.substring(0, 22) == "motor-speed-multiplier"){
+  if(messageIn.substring(0, 22) == "motor-speed-multiplier"){ // Change motor speed
     motorMultiplier = messageIn.substring(24, messageIn.length()).toFloat();
-    Serial.println(motorMultiplier);
-    
     analogWrite(PWM_PIN_1, 30*motorMultiplier);
     analogWrite(PWM_PIN_2, 30*motorMultiplier);
   }
-  else if(messageIn.substring(0, 20) == "fan-speed-multiplier"){
+  else if(messageIn.substring(0, 20) == "fan-speed-multiplier"){ // Change fan speed
     fanMultiplier = messageIn.substring(22, messageIn.length()).toFloat();
-    Serial.println("Current fan PWM output: " + (String)(255*fanMultiplier));
     analogWrite(FAN_PWM_PIN, 255*fanMultiplier);
   }
-  else{
+  else{ // Otherwise, it must be a motor command, use onCommand to parse String input
     motorCmd = messageIn;
     onCommand(motorCmd);
     prevCommand = motorCmd;
@@ -148,7 +146,7 @@ void manualMode(){
 
 // Code for automatic mode
 void autoMode(){
-  if(millis() - prevMillis >= 100){
+  if(millis() - prevMillis >= 100){ // Every 100ms evaluate surroundings and move accordingly
     prevMillis = millis();
     
     distanceLeft = sonarLeft.ping()*0.034/2;
@@ -158,16 +156,12 @@ void autoMode(){
     leftMotorCurrent = analogRead(CURRENT_SENSING_PIN_1);
     rightMotorCurrent = analogRead(CURRENT_SENSING_PIN_2);
 
-    if(leftMotorCurrent != 0 || rightMotorCurrent != 0){
-      Serial.println(String(leftMotorCurrent) + " " + String(rightMotorCurrent));
-    }
-
-    /** Obstacle avoidance algorithm **/
-    if((leftMotorCurrent+prevLeftMotorCurrent)/2 > 300 || (rightMotorCurrent+prevRightMotorCurrent)/2 > 300 && prevCommand == "forward"){ // If the current readings exceed, it means the motors are considerably stalled
+    /** Obstacle avoidance and Current sensing **/
+    if((leftMotorCurrent+prevLeftMotorCurrent)/2 > 300 || (rightMotorCurrent+prevRightMotorCurrent)/2 > 300 && prevCommand == "forward"){ // If the current readings exceed 300, it means the motors are considerably stalled
       command = "backward";
       lastStuckMillis = millis();
     }
-    else if(prevCommand == "backward"){
+    else if(prevCommand == "backward"){ // If robot is backing off due to being stuck previously
       if(millis() - lastStuckMillis > 2000){ // Back off for 2 seconds, then choose random direction to turn away to
         int randInt = random(0, 2);
         if(randInt == 0){
@@ -207,7 +201,8 @@ void autoMode(){
       }
     }
   
-    onCommand(command); // Use the command 
+    onCommand(command); // Use the command to drive the motor
+
     prevCommand = command;
     prevLeftMotorCurrent = leftMotorCurrent;
     prevRightMotorCurrent = rightMotorCurrent;
@@ -216,7 +211,7 @@ void autoMode(){
 
 // Motor control based on the command
 void onCommand(String cmd){
-  if(millis() - lastCmdMillis > 1000 && cmd == "forward"){ // Give motor a boost after a second - sometimes stalls
+  if(millis() - lastCmdMillis > 1000 && cmd == "forward"){ // Give motor a boost after each second as it sometimes stalls after a couple seconds
     digitalWrite(DIRECTION_PIN_1, HIGH);
     digitalWrite(DIRECTION_PIN_2, HIGH);
     digitalWrite(BRAKE_PIN_1, LOW);
@@ -231,8 +226,11 @@ void onCommand(String cmd){
     lastCmdMillis = millis();
     return;
   }
-  if(cmd != prevCommand){
-    resetMotors();
+
+  // Where command is interpreted and motor is adjusted accordingly
+  if(cmd != prevCommand){ // Only change motor configs if command does not match previous command
+    resetMotors(); // Helper function to reset all motor configs
+
     if(cmd == "forward"){
       digitalWrite(DIRECTION_PIN_1, HIGH);
       digitalWrite(DIRECTION_PIN_2, HIGH);
@@ -259,7 +257,7 @@ void onCommand(String cmd){
       analogWrite(PWM_PIN_2, 35*motorMultiplier);
       return;
     }
-    if(cmd == "turn-left-random-duration"){
+    if(cmd == "turn-left-random-duration"){ // Random duration from 3 to 5 seconds seems to work best
       digitalWrite(DIRECTION_PIN_1, HIGH);
       digitalWrite(DIRECTION_PIN_2, LOW);
       digitalWrite(BRAKE_PIN_1, LOW);
@@ -288,7 +286,7 @@ void onCommand(String cmd){
 
       return;
     }
-    if(cmd == "turn-right-random-duration"){
+    if(cmd == "turn-right-random-duration"){ // Random duration from 3 to 5 seconds seems to work best
       digitalWrite(DIRECTION_PIN_1, LOW);
       digitalWrite(DIRECTION_PIN_2, HIGH);
       digitalWrite(BRAKE_PIN_1, LOW);
@@ -320,11 +318,12 @@ void onCommand(String cmd){
     if(cmd == "brake"){
       return;
     }
-    Serial.println("COMMAND INVALID: " + cmd);
+
+    Serial.println("COMMAND INVALID: " + cmd); // If function has not returned, it means that the passed-in cmd parameter is invalid
   }
 }
 
-// Reset the motors
+// Resets the motors
 void resetMotors(){
   digitalWrite(BRAKE_PIN_1, HIGH);
   digitalWrite(BRAKE_PIN_2, HIGH);
@@ -336,6 +335,7 @@ void resetMotors(){
 }
 
 // Changes the PWM frequency of Timer2 (PWM timer for Pins 3 and 11)
+// Equation: 31250Hz/prescaler = PWM freq. 
 void setPWMPrescaler(int prescaler){
   byte mode;
 
