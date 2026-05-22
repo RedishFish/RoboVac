@@ -1,8 +1,8 @@
 '''
 Author:     Philip Xu
 Date:   2024/06/06
-Description:    This GUI app offers Bluetooth control for the RoboVac. 
-                It allows the user to control the motors and the fan. 
+Description:    This GUI app offers Bluetooth control for the RoboVac.
+                It allows the user to control the motors and the fan.
                 It also allows the user to read the battery status.
 '''
 
@@ -10,6 +10,7 @@ Description:    This GUI app offers Bluetooth control for the RoboVac.
 import customtkinter
 import tkinter
 import socket
+import threading
 import time
 
 customtkinter.set_appearance_mode("dark")
@@ -19,12 +20,8 @@ class App(customtkinter.CTk):
     def __init__(self):
         super().__init__()
 
-        ### Try connecting to Bluetooth ###
-        try:
-            self.BTConnection()
-            print("connection successful")
-        except:
-            raise ConnectionError("Connection unsuccessful to robot. Check if the HC-05 Bluetooth device has been paired")
+        self.connected = False
+        self.client: socket.socket | None = None
 
         ### GUI frame configs ###
         self.title("RoboVac")
@@ -36,10 +33,13 @@ class App(customtkinter.CTk):
 
         self.appTitle = customtkinter.CTkLabel(self.mainFrame, text="RoboVac User Interface", font=customtkinter.CTkFont(size=25, weight="bold"))
         self.appTitle.pack(pady=(20, 10))
-        
+
         self.reconnectButton = customtkinter.CTkButton(self.mainFrame, text="Reconnect", command=self.BTConnection)
         self.reconnectButton.pack()
-        
+
+        self.connectionStatus = customtkinter.CTkLabel(self.mainFrame, text="Status: Disconnected", text_color="red")
+        self.connectionStatus.pack(pady=(5, 0))
+
         # Frame containing the manual/auto mode buttons
         self.modeFrame = customtkinter.CTkFrame(self.mainFrame)
         self.modeFrame.pack(pady=20, padx=20, fill="both", expand=True)
@@ -96,29 +96,40 @@ class App(customtkinter.CTk):
         self.setPowerButton.grid(padx=20, pady=0, row=1, column=3)
 
         # Disable features initially
-        self.widgets = [self.forwardBtn, self.rightBtn, self.leftBtn, self.backwardBtn, self.brakeBtn, self.motorSpeedSlider, self.fanSpeedSlider, self.setPowerButton]
+        self.widgets = [self.forwardBtn, self.rightBtn, self.leftBtn, self.backwardBtn, self.brakeBtn, self.motorSpeedSlider, self.fanSpeedSlider, self.setPowerButton, self.manualBtn]
         self.disableFeatures()
 
         self.lastMillis1 = time.time()
         self.lastMillis2 = time.time()
+        self._connecting = False
+
+        ### Try initial Bluetooth connection ###
+        self.BTConnection()
+
+    def _scheduleRetry(self):
+        if not self.connected:
+            self.BTConnection()
 
     # Disable all interactable widgets
     def disableFeatures(self):
         for widget in self.widgets:
             widget.configure(state="disabled")
-        try:
+        if self.client is not None:
             self.client.send("mode: auto/".encode("utf-8"))
-        except:
-            pass
 
     # Enable all interactable widgets
     def enableFeatures(self):
+        if self.client is None:
+            self.modeVar.set(0)
+            return
         for widget in self.widgets:
             widget.configure(state="normal")
         self.client.send("mode: manual/".encode("utf-8"))
 
     # When a motor control button is pressed
     def onMotorCommand(self, parent):
+        if self.client is None:
+            return
         if parent == "forwardBtn":
             self.client.send("forward/".encode("utf-8"))
         elif parent == "leftBtn":
@@ -129,9 +140,11 @@ class App(customtkinter.CTk):
             self.client.send("backward/".encode("utf-8"))
         elif parent == "brakeBtn":
             self.client.send("brake/".encode("utf-8"))
-    
+
     # When the motor speed slider is changed
     def onMotorSlider(self, value):
+        if self.client is None:
+            return
         if time.time() - self.lastMillis1 > 0.250: # do not want to overwhelm the Arduino Serial port
             self.client.send(f"motor-speed-multiplier: {value+0.5}/".encode("utf-8"))
             print(f"Sent {value+0.5}")
@@ -139,17 +152,48 @@ class App(customtkinter.CTk):
 
     # When the fan slider is changed
     def onFanSlider(self, value):
+        if self.client is None:
+            return
         if time.time() - self.lastMillis2 > 0.250: # do not want to overwhelm the Arduino Serial port
             self.client.send(f"fan-speed-multiplier: {value}/".encode("utf-8"))
             self.lastMillis2 = time.time()
-       
-    # Create a new Bluetooth connection
+
+    # Create a new Bluetooth connection (non-blocking)
     def BTConnection(self):
-        self.client = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-        self.client.connect(("00:23:00:00:91:ef", 1))
+        if self._connecting:
+            return
+        self._connecting = True
+        self.connectionStatus.configure(text="Status: Connecting...", text_color="orange")
+        threading.Thread(target=self._btConnectThread, daemon=True).start()
+
+    def _btConnectThread(self):
+        try:
+            client = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+            client.settimeout(5)
+            client.connect(("00:23:00:00:91:ef", 1))
+            self.after(0, self._onConnected, client)
+        except Exception as e:
+            self.after(0, self._onConnectionFailed, str(e))
+
+    def _onConnected(self, client):
+        self._connecting = False
+        self.client = client
+        self.connected = True
+        self.connectionStatus.configure(text="Status: Connected", text_color="green")
+        self.manualBtn.configure(state="normal")
+        print("Connection successful")
+
+    def _onConnectionFailed(self, error):
+        self._connecting = False
+        self.connected = False
+        self.connectionStatus.configure(text="Status: Disconnected - Retrying...", text_color="red")
+        print(f"Connection failed: {error}")
+        self.after(1000, self._scheduleRetry)
 
     # Gets battery percentage from the robot, then displays it
     def setBatteryStatus(self):
+        if self.client is None:
+            return
         data = self.client.recv(1024).decode('utf-8').split("\r\n")
         for line in data:
             if line and line[-1] == "/" and line.startswith("battery: "):
