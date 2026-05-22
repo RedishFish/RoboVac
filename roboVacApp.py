@@ -13,6 +13,13 @@ import socket
 import threading
 import time
 
+DEBUG = True  # Set to False for real Bluetooth connection
+
+class _FakeSocket:
+    def send(self, data: bytes) -> None: print(f"[DEBUG] send: {data}")
+    def recv(self, size: int) -> bytes: return b"battery: 75.0/\r\n"
+    def settimeout(self, t: float) -> None: pass
+
 customtkinter.set_appearance_mode("dark")
 customtkinter.set_default_color_theme("dark-blue")
 
@@ -21,7 +28,7 @@ class App(customtkinter.CTk):
         super().__init__()
 
         self.connected = False
-        self.client: socket.socket | None = None
+        self.client: socket.socket | _FakeSocket | None = None
 
         ### GUI frame configs ###
         self.title("RoboVac")
@@ -96,7 +103,7 @@ class App(customtkinter.CTk):
         self.setPowerButton.grid(padx=20, pady=0, row=1, column=3)
 
         # Disable features initially
-        self.widgets = [self.forwardBtn, self.rightBtn, self.leftBtn, self.backwardBtn, self.brakeBtn, self.motorSpeedSlider, self.fanSpeedSlider, self.setPowerButton, self.manualBtn]
+        self.widgets = [self.forwardBtn, self.rightBtn, self.leftBtn, self.backwardBtn, self.brakeBtn, self.motorSpeedSlider, self.fanSpeedSlider, self.setPowerButton]
         self.disableFeatures()
 
         self.lastMillis1 = time.time()
@@ -168,9 +175,12 @@ class App(customtkinter.CTk):
 
     def _btConnectThread(self):
         try:
-            client = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
-            client.settimeout(5)
-            client.connect(("00:23:00:00:91:ef", 1))
+            if DEBUG:
+                client: socket.socket | _FakeSocket = _FakeSocket()
+            else:
+                client = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+                client.settimeout(5)
+                client.connect(("00:23:00:00:91:ef", 1))
             self.after(0, self._onConnected, client)
         except Exception as e:
             self.after(0, self._onConnectionFailed, str(e))
