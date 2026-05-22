@@ -13,8 +13,9 @@ You would need to create your own robot vacuum. This means you will need:
 - 1 9V battery pack
 - 1 vacuum fan of your choice
 - 3D printed shell
-Note which pins for each of these components are documented in the `roboVac.ino` by referring the pin variables.
+
+Note which pins for each of these components are documented in the `roboVac.ino` file by referring the pin variables.
 
 ## How to Run
 - Run `roboVac.ino` as a sketch on an Arduino UNO microcontroller. Make sure the Arduino is properly connected to all components with the pins.
-- Optionally, if you want to access the remote control via Bluetooth, run roboVacApp.py on your local device. Toggle to manual mode to access the remote control features!
+- Optionally, if you want to access the remote control via Bluetooth, run `roboVacApp.py` on your local device. Toggle to manual mode to access the remote control features!
