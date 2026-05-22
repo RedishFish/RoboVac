@@ -19,3 +19,4 @@ Note which pins for each of these components are documented in the `roboVac.ino`
 ## How to Run
 - Run `roboVac.ino` as a sketch on an Arduino UNO microcontroller. Make sure the Arduino is properly connected to all components with the pins.
 - Optionally, if you want to access the remote control via Bluetooth, run `roboVacApp.py` on your local device. Toggle to manual mode to access the remote control features!
+<img width="1436" height="1620" alt="image" src="https://github.com/user-attachments/assets/39fb43d0-13e7-4867-b28b-a629ad27ab9f" />
